@@ -1,0 +1,830 @@
+C51 COMPILER V9.52.0.0   GAME                                                              02/26/2019 22:05:33 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE GAME
+OBJECT MODULE PLACED IN Game.OBJ
+COMPILER INVOKED BY: D:\C51\BIN\C51.EXE Game.c BROWSE DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          #include "stc.h"
+   2          #include "Lcd12864.h"
+   3          #include "Key.h"
+   4          #include "stdlib.h"
+   5          #define N 30
+   6          struct Food
+   7          {
+   8            unsigned int x;
+   9            unsigned char yes;
+  10          }food;//食物结构体
+  11          struct Snake
+  12          {
+  13            int x[N];
+  14            unsigned char direction;
+  15            unsigned char last;
+  16            unsigned char life;
+  17          }snake;//蛇结构体
+  18          
+  19          
+  20          unsigned char Score=0;
+  21          
+  22          
+  23          #define UP 4           
+  24          #define DOWN  2       
+  25          #define LEFT 3         
+  26          #define RIGHT 1      
+  27          #define JUP 5
+  28          #define JDOWN 6
+  29          
+  30          static unsigned int Seed = 1;
+  31          unsigned char KeyBuffer=0;
+  32          unsigned char mode = 0;
+  33          unsigned char Wait = 5;
+  34          unsigned int Last ;
+  35          unsigned char node;
+  36          
+  37          
+  38          /**********************************
+  39          定时器0的初始化,用于产生随机数
+  40          **********************************/        
+  41          void Timer0_Init()
+  42          {  
+  43   1         TMOD = 0x01;
+  44   1         TH0 = 0;  
+  45   1         TL0 = 0; 
+  46   1         TR0 = 1;
+  47   1      }  
+  48          /************************************
+  49          伪随机数发生器
+  50          *************************************/
+  51          int Random(void)
+  52          {
+  53   1        srand(rand()+TL0);
+  54   1        return rand()%513;
+  55   1      }
+C51 COMPILER V9.52.0.0   GAME                                                              02/26/2019 22:05:33 PAGE 2   
+
+  56          /****************************************
+  57          延时子程序
+  58          ****************************************/
+  59          void delay(unsigned int t)
+  60          {  
+  61   1        unsigned int i,j;
+  62   1        for(i=0;i<t;i++)
+  63   1          for(j=0;j<10;j++);    
+  64   1      }
+  65          
+  66          /*********************************
+  67          初始化MPU
+  68          **********************************/
+  69          void InitCpu(void)
+  70          {
+  71   1        TMOD=0x01;
+  72   1        TH0=0;
+  73   1        TL0=0;
+  74   1        TR0=1;
+  75   1        ET0=1;
+  76   1        EA=1;
+  77   1      }
+  78          
+  79          /***********************************
+  80          修改键盘缓存,当产生一个外部中断时运行
+  81          ***********************************/
+  82          void Timer0Int(void) interrupt 1
+  83          {
+  84   1        switch(OSReadKey())
+  85   1        {
+  86   2          case 1:
+  87   2              KeyBuffer=1;             //按键4
+  88   2              break;
+  89   2          case 2:
+  90   2              KeyBuffer=2;             //按键3
+  91   2              break;
+  92   2          case 3:
+  93   2              KeyBuffer=3;           //按键2
+  94   2              break;
+  95   2          case 4:
+  96   2              KeyBuffer=4;             //按键1
+  97   2              break;
+  98   2          case 5:
+  99   2              KeyBuffer=5;             //按键2和按键4
+ 100   2              break;
+ 101   2          case 6:
+ 102   2              KeyBuffer=6;            //按键1和按键4
+ 103   2              break;
+ 104   2          case 7:
+ 105   2              KeyBuffer=7;            //按键2和按键3
+ 106   2              break;
+ 107   2          case 8:
+ 108   2              KeyBuffer=8;            //按键1和按键3
+ 109   2              break;
+ 110   2          default:
+ 111   2              break;
+ 112   2        }
+ 113   1      }
+ 114          
+ 115          /******************************
+ 116          画墙壁，初始化界面
+ 117          *******************************/
+C51 COMPILER V9.52.0.0   GAME                                                              02/26/2019 22:05:33 PAGE 3   
+
+ 118           void DrawBoard(void)
+ 119           {
+ 120   1        unsigned char n;
+ 121   1        for(n=1;n<28;n++)
+ 122   1        {
+ 123   2          Lcd_Rectangle(3*n,0,1);
+ 124   2          Lcd_Rectangle(3*n,60,1);
+ 125   2        }
+ 126   1        for(n=0;n<21;n++)
+ 127   1        {
+ 128   2          Lcd_Rectangle(3,3*n,1);
+ 129   2          Lcd_Rectangle(81,3*n,1);    
+ 130   2        }
+ 131   1        Lcd_HoriLine(84,30,44,1);
+ 132   1        Lcd_HoriLine(84,62,44,1);
+ 133   1        Lcd_WriteStr(6,2,"剩余"); 
+ 134   1        if(mode!=1) Lcd_WriteStr(6,0,"得分"); 
+ 135   1        if(mode==2)
+ 136   1        {
+ 137   2        for(n=1;n<21;n++)
+ 138   2        {
+ 139   3          Lcd_Rectangle(42,3*n,1);
+ 140   3        }
+ 141   2        for(n=1;n<28;n++)
+ 142   2        {
+ 143   3          Lcd_Rectangle(3*n,30,1);
+ 144   3        }
+ 145   2        }
+ 146   1      }
+ 147          /***************************
+ 148          打印成绩
+ 149          ****************************/
+ 150          void PrintScore(void)
+ 151          {
+ 152   1        unsigned char Str[3];
+ 153   1      //  Lcd_WriteStr(6,0,"得分");
+ 154   1        Str[0]=(Score/10)|0x30;//十位
+ 155   1        Str[1]=(Score%10)|0x30;//个位
+ 156   1        Str[2]=0;
+ 157   1        Lcd_WriteStr(6,1,Str);
+ 158   1      }
+ 159          
+ 160          /********************************
+ 161          打印剩余步数
+ 162          *********************************/
+ 163          void PrintLast(void)
+ 164          {
+ 165   1        unsigned char Str[4];
+ 166   1      //  Lcd_WriteStr(6,2,"剩余");
+ 167   1        Str[0]=((Last-2)/100)|0x30;
+ 168   1        Str[1]=(((Last-2)%100)/10)|0x30;
+ 169   1        Str[2]=((Last-2)%10)|0x30;
+ 170   1        Str[3]=0;
+ 171   1        Lcd_WriteStr(6,3,Str);
+ 172   1      }
+ 173          
+ 174          /***********************************
+ 175          游戏结束处理
+ 176          ************************************/
+ 177          void GameOver(void)
+ 178          {
+ 179   1        unsigned char i;
+C51 COMPILER V9.52.0.0   GAME                                                              02/26/2019 22:05:33 PAGE 4   
+
+ 180   1        DrawGame(food.x,0);//消隐出食物
+ 181   1        for(i=0;i<=node;i++)
+ 182   1        {
+ 183   2          DrawGame(snake.x[i],0);//消隐食物，蛇头已到墙壁内，故不用消去   
+ 184   2        }
+ 185   1          Lcd_WriteStr(1,1,"蛇死了");
+ 186   1        Lcd_WriteStr(1,2,"游戏结束");
+ 187   1        while(1);
+ 188   1      }
+ 189          /****************************************
+ 190          游戏菜单栏
+ 191          ****************************************/
+ 192          void menu(void)
+ 193          {
+ 194   1        Lcd_Clear(0);
+ 195   1        KeyBuffer=0;  
+ 196   1        mode=0;
+ 197   1        Lcd_WriteStr(2,1,"等级选择");
+ 198   1        Lcd_WriteStr(3,2,"1~4");
+ 199   1        while(KeyBuffer==0);//如果键盘无输入,一直循环
+ 200   1        switch(KeyBuffer)
+ 201   1        {
+ 202   2          case 4 : 
+ 203   2            Wait = 20;break;
+ 204   2          case 3 :
+ 205   2            Wait = 10;break;
+ 206   2          case 2 :
+ 207   2            Wait = 5;break;
+ 208   2          default :
+ 209   2            Wait = 1;
+ 210   2        }
+ 211   1        KeyBuffer=0;
+ 212   1        delay(5000);
+ 213   1        Lcd_Clear(0);
+ 214   1        Lcd_WriteStr(1,1,"1.普通模式");
+ 215   1        Lcd_WriteStr(1,2,"2.双人模式");
+ 216   1        Lcd_WriteStr(1,3,"3.塔模式");
+ 217   1        while(KeyBuffer==0);
+ 218   1        switch(KeyBuffer)
+ 219   1        {
+ 220   2          case 2 :
+ 221   2            mode = 2;break;
+ 222   2          case 3 :
+ 223   2            mode = 1;break;
+ 224   2          default :
+ 225   2            mode = 0;
+ 226   2        }
+ 227   1        delay(5000);
+ 228   1      }
+ 229          
+ 230          
+ 231          
+ 232            void CheckDirection(unsigned char direction,unsigned char n, int *x)
+ 233            {
+ 234   1          switch(direction)
+ 235   1          {
+ 236   2            case UP:
+ 237   2              x[n+1]=x[n]-27;
+ 238   2            break;
+ 239   2            case DOWN:
+ 240   2              x[n+1]=x[n]+27;
+ 241   2              break;
+C51 COMPILER V9.52.0.0   GAME                                                              02/26/2019 22:05:33 PAGE 5   
+
+ 242   2            case LEFT:
+ 243   2              x[n+1]=x[n]-1;
+ 244   2              break;
+ 245   2            default :
+ 246   2              x[n+1]=x[n]+1;
+ 247   2          }
+ 248   1        }
+ 249              
+ 250          unsigned char CheckLife(unsigned char n, int *x)
+ 251            {
+ 252   1          unsigned char i,life=0;
+ 253   1          if((x[n+1]<0)||(x[n+1]>512))
+ 254   1            life++;
+ 255   1          else if((x[n+1]%27)==0)
+ 256   1            life++;
+ 257   1          else if((x[n+1]%27)==26)
+ 258   1            life++;
+ 259   1          
+ 260   1          for(i=0;i<=n;i++)
+ 261   1          {
+ 262   2            if(x[i]==x[n+1])
+ 263   2              life++;
+ 264   2          }   
+ 265   1          return life;
+ 266   1        }
+ 267            
+ 268            
+ 269          /****************************************
+ 270          检查是否需要生成食物,如需要,给food.x赋值
+ 271          ****************************************/
+ 272          void CheckFood(unsigned char node2)
+ 273          {
+ 274   1        
+ 275   1        if(food.yes==1)
+ 276   1        { 
+ 277   2          while(1)
+ 278   2          {
+ 279   3            unsigned char i,j=0;//可以改成bool型
+ 280   3            food.x=Random();
+ 281   3            for(i=0;i<=node;i++)
+ 282   3            {
+ 283   4              j=(snake.x[i]==food.x)+j;
+ 284   4            }
+ 285   3            if((food.x%27==0)||(food.x%27==26))
+ 286   3              j=j+1;
+ 287   3            if(mode==1)
+ 288   3            {
+ 289   4              for(i=0;i<=node2;i++)
+ 290   4              j=(snake.x[15+i]==food.x)+j;
+ 291   4            }
+ 292   3            if(j==0)
+ 293   3              break;
+ 294   3          }
+ 295   2          }
+ 296   1          DrawFood(food.x);
+ 297   1          food.yes=0;
+ 298   1      } 
+ 299          
+ 300          /********************************
+ 301          游戏的具体过程，也是贪吃蛇算法的关键部分
+ 302          *********************************/
+ 303          
+C51 COMPILER V9.52.0.0   GAME                                                              02/26/2019 22:05:33 PAGE 6   
+
+ 304          void Game0()
+ 305          {
+ 306   1        unsigned char i=0;
+ 307   1        node=2;//蛇当前长度
+ 308   1        food.yes=1;//1代表要生成食物
+ 309   1        KeyBuffer=0;
+ 310   1        delay(5000);
+ 311   1        snake.x[0]=31;
+ 312   1        DrawGame(snake.x[0],1);
+ 313   1        snake.x[1]=58;
+ 314   1        DrawGame(snake.x[1],1); 
+ 315   1        snake.x[2]=85;
+ 316   1        DrawGame(snake.x[2],1); 
+ 317   1        snake.direction=DOWN;
+ 318   1        snake.last=DOWN;
+ 319   1        snake.life=0;//0代表活着
+ 320   1        Last=283;
+ 321   1        
+ 322   1        while(1)
+ 323   1        {
+ 324   2          Last--; 
+ 325   2          CheckFood(0);   
+ 326   2          snake.last=snake.direction;
+ 327   2          switch(KeyBuffer)
+ 328   2          {
+ 329   3            case 3 :
+ 330   3              if(snake.last!=UP)
+ 331   3              {
+ 332   4                snake.last=snake.direction;
+ 333   4                snake.direction=DOWN;
+ 334   4              }
+ 335   3              break;
+ 336   3            case 4 :
+ 337   3              if(snake.last!=DOWN)
+ 338   3              {
+ 339   4                snake.last=snake.direction;
+ 340   4                snake.direction=UP;
+ 341   4              }
+ 342   3              break;
+ 343   3            case 2:
+ 344   3              if(snake.last!=RIGHT)
+ 345   3              {
+ 346   4                snake.last=snake.direction;
+ 347   4                snake.direction=LEFT;
+ 348   4              }
+ 349   3              break;
+ 350   3            case 1 :
+ 351   3              if(snake.last!=LEFT)
+ 352   3              {
+ 353   4                snake.last=snake.direction;
+ 354   4                snake.direction=RIGHT;
+ 355   4              }
+ 356   3              break;
+ 357   3              default:
+ 358   3                snake.direction=snake.last;
+ 359   3            }
+ 360   2            
+ 361   2            CheckDirection(snake.direction,node,snake.x);   
+ 362   2            snake.life=CheckLife(node,snake.x);
+ 363   2      
+ 364   2            if((snake.life!=0)||(Last<=1))
+ 365   2              GameOver();
+C51 COMPILER V9.52.0.0   GAME                                                              02/26/2019 22:05:33 PAGE 7   
+
+ 366   2        
+ 367   2            if(snake.x[node+1]==food.x)
+ 368   2            {
+ 369   3              food.yes=1;
+ 370   3            }
+ 371   2            
+ 372   2            DrawGame(snake.x[node+1],1);
+ 373   2            DrawGame(snake.x[0],food.yes);
+ 374   2            
+ 375   2            if(food.yes==1)
+ 376   2            {
+ 377   3              Last=(29-node)*10+2;
+ 378   3              Score++;
+ 379   3              node++;
+ 380   3            }
+ 381   2            else
+ 382   2            {
+ 383   3              for(i=0;i<=node;i++)
+ 384   3              {
+ 385   4                snake.x[i]=snake.x[i+1];
+ 386   4              }
+ 387   3            }
+ 388   2            
+ 389   2            PrintScore();
+ 390   2            PrintLast();
+ 391   2            delay(Wait*1000);
+ 392   2          }
+ 393   1        }
+ 394            
+ 395            
+ 396            
+ 397            
+ 398          //*******************************************************************************************
+ 399          void Game1()
+ 400          {
+ 401   1        int *snake2x=&snake.x[15];
+ 402   1        unsigned char i,j;
+ 403   1        unsigned char snake2last=DOWN;
+ 404   1        unsigned char snake2direction=DOWN;
+ 405   1        unsigned char snake2life=0;
+ 406   1        unsigned char node2=2;
+ 407   1        node=2;//蛇当前长度 
+ 408   1        food.yes=1;//1代表要生成食物
+ 409   1        KeyBuffer=0;
+ 410   1        delay(5000);
+ 411   1        snake.x[0]=31;
+ 412   1        DrawGame(snake.x[0],1);
+ 413   1        snake.x[1]=58;
+ 414   1        DrawGame(snake.x[1],1); 
+ 415   1        snake.x[2]=85;
+ 416   1        DrawGame(snake.x[2],1); 
+ 417   1        snake2x[0]=49;
+ 418   1        DrawGame(snake2x[0],1);
+ 419   1        snake2x[1]=76;
+ 420   1        DrawGame(snake2x[1],1);
+ 421   1        snake2x[2]=103;
+ 422   1        DrawGame(snake2x[2],1);
+ 423   1        snake.direction=DOWN;
+ 424   1        snake.last=DOWN;
+ 425   1        snake.life=0;//0代表活着
+ 426   1        Last=303;
+ 427   1        
+C51 COMPILER V9.52.0.0   GAME                                                              02/26/2019 22:05:33 PAGE 8   
+
+ 428   1        while(1)
+ 429   1        {
+ 430   2          Last--;
+ 431   2          CheckFood(node2);
+ 432   2          
+ 433   2          if((KeyBuffer==4)||(KeyBuffer==6)||(KeyBuffer==8))
+ 434   2          {
+ 435   3            if(snake.last==1)
+ 436   3            {
+ 437   4              snake.direction=UP;
+ 438   4              snake.last=snake.direction;
+ 439   4            }
+ 440   3            else
+ 441   3            {
+ 442   4              snake.direction=snake.last-1;
+ 443   4              snake.last=snake.direction;
+ 444   4            }
+ 445   3          }
+ 446   2          else if((KeyBuffer==3)||(KeyBuffer==7)||(KeyBuffer==5))
+ 447   2          {
+ 448   3            if(snake.last==4)
+ 449   3            {
+ 450   4              snake.direction=RIGHT;
+ 451   4              snake.last=snake.direction;
+ 452   4            }
+ 453   3            else
+ 454   3            {
+ 455   4              snake.direction=snake.last+1;
+ 456   4              snake.last=snake.direction;
+ 457   4            }
+ 458   3          }
+ 459   2          else
+ 460   2            snake.direction =snake.last;
+ 461   2          
+ 462   2          if((KeyBuffer==2)||(KeyBuffer==7)||(KeyBuffer==8))
+ 463   2          {
+ 464   3            if(snake2last==1)
+ 465   3            {
+ 466   4              snake2direction=RIGHT;
+ 467   4              snake2last=snake2direction;
+ 468   4            }
+ 469   3            else
+ 470   3            {
+ 471   4              snake2direction=snake2last-1;
+ 472   4              snake2last=snake2direction;
+ 473   4            }
+ 474   3          }
+ 475   2          else if((KeyBuffer==1)||(KeyBuffer==5)||(KeyBuffer==6))
+ 476   2          {
+ 477   3            if(snake2last==4)
+ 478   3            {
+ 479   4              snake2direction=RIGHT;
+ 480   4              snake2last=snake2direction;
+ 481   4            }
+ 482   3            else
+ 483   3            {
+ 484   4              snake2direction=snake2last+1;
+ 485   4              snake2last=snake2direction;
+ 486   4            }
+ 487   3          }
+ 488   2          else
+ 489   2            snake2direction=snake2last;
+C51 COMPILER V9.52.0.0   GAME                                                              02/26/2019 22:05:33 PAGE 9   
+
+ 490   2          
+ 491   2          KeyBuffer=0;
+ 492   2          
+ 493   2          CheckDirection(snake.direction,node,snake.x);
+ 494   2          CheckDirection(snake2direction,node2,snake2x);
+ 495   2          snake.life=CheckLife(node,snake.x);
+ 496   2          for(i=0;i<=node2;i++)
+ 497   2          {
+ 498   3            if(snake2x[i]==snake.x[node+1])
+ 499   3              snake.life++;
+ 500   3          }
+ 501   2          
+ 502   2          snake2life=CheckLife(node2,snake2x);
+ 503   2          for(i=0;i<=node;i++)
+ 504   2          {
+ 505   3            if(snake.x[i]==snake2x[node2+1])
+ 506   3              snake2life++;
+ 507   3          }
+ 508   2          
+ 509   2          if((snake.life+snake2life)!=0)
+ 510   2          {
+ 511   3            if((snake.life==0)&&(snake2life!=0))      
+ 512   3              Lcd_WriteStr(1,1,"Snake1胜");
+ 513   3            else if((snake.life!=0)&&(snake2life==0))
+ 514   3              Lcd_WriteStr(1,1,"Snake2胜");
+ 515   3            else
+ 516   3            {
+ 517   4              if(node>node2)
+ 518   4                Lcd_WriteStr(1,1,"Snake1胜");
+ 519   4              else if(node<node2)
+ 520   4                Lcd_WriteStr(1,1,"Snake2胜");
+ 521   4              else
+ 522   4                Lcd_WriteStr(1,1,"平局");
+ 523   4            }
+ 524   3            Lcd_WriteStr(1,2,"游戏结束");
+ 525   3            while(1);
+ 526   3          }
+ 527   2          
+ 528   2          j=0;
+ 529   2          if(snake.x[node+1]==food.x)
+ 530   2          {
+ 531   3            food.yes=1;
+ 532   3            j=1;
+ 533   3          } 
+ 534   2          else if(snake2x[node2+1]==food.x)
+ 535   2          {
+ 536   3            food.yes=1;
+ 537   3            j=2;
+ 538   3          }
+ 539   2          
+ 540   2          
+ 541   2          DrawGame(snake.x[node+1],1);
+ 542   2          DrawGame(snake.x[0],(food.yes)&&(j==1));
+ 543   2          DrawGame(snake2x[node2+1],1);
+ 544   2          DrawGame(snake2x[0],(food.yes)&&(j==2));
+ 545   2      
+ 546   2          if((food.yes==1)&&(j==1))
+ 547   2          {
+ 548   3            Last=Last-node;
+ 549   3            node++;
+ 550   3          }
+ 551   2          else
+C51 COMPILER V9.52.0.0   GAME                                                              02/26/2019 22:05:33 PAGE 10  
+
+ 552   2          {
+ 553   3            for(i=0;i<=node;i++)
+ 554   3            {
+ 555   4              snake.x[i]=snake.x[i+1];
+ 556   4            }
+ 557   3          }
+ 558   2      
+ 559   2          if((food.yes==1)&&(j==2))
+ 560   2          {
+ 561   3            Last=Last-node2;
+ 562   3            node2++;
+ 563   3          }
+ 564   2          else
+ 565   2          {
+ 566   3            for(i=0;i<=node2;i++)
+ 567   3            {
+ 568   4              snake2x[i]=snake2x[i+1];
+ 569   4            }
+ 570   3          }
+ 571   2          PrintLast();
+ 572   2          delay(Wait*1000);
+ 573   2        }
+ 574   1      }
+ 575          
+ 576          /*    
+ 577              if((snake.x[node1+1]<0)||(snake.x[node1+1]>512))
+ 578                snake.life++;
+ 579              else if((snake.x[node1+1]%27)==0)
+ 580                snake.life++;
+ 581              else if((snake.x[node1+1]%27)==26)
+ 582                snake.life++; 
+ 583              for(i=0;i<=node;i++)
+ 584              {
+ 585                if(snake.x[i]==snake.x[node+1])
+ 586                  snake.life++;
+ 587              }
+ 588              
+ 589              if((snake2x[node2+1]<0)||(snake2x[node2+1]>512))
+ 590                snake2life++;
+ 591              else if((snake2x[node2+1]%27)==0)
+ 592                snake2life++;
+ 593              else if((snake2x[node2+1]%27)==26)
+ 594                snake2life++;
+ 595          */
+ 596                  
+ 597            
+ 598            
+ 599          void Game2(void)
+ 600          {
+ 601   1        unsigned char i=0;
+ 602   1        node=2;//蛇当前长度
+ 603   1        food.yes=1;//1代表要生成食物
+ 604   1        KeyBuffer=0;
+ 605   1        delay(5000);
+ 606   1        snake.x[0]=68;
+ 607   1        DrawGame2(snake.x[0],1,1);
+ 608   1        snake.x[1]=124;
+ 609   1        DrawGame2(snake.x[1],1,1);  
+ 610   1        snake.x[2]=180;
+ 611   1        DrawGame2(snake.x[2],1,1);  
+ 612   1        snake.direction=DOWN;
+ 613   1        snake.last=DOWN;
+C51 COMPILER V9.52.0.0   GAME                                                              02/26/2019 22:05:33 PAGE 11  
+
+ 614   1        snake.life=0;//0代表活着
+ 615   1        Last=283;
+ 616   1        
+ 617   1        while(1)
+ 618   1        {
+ 619   2          Last--;
+ 620   2          
+ 621   2          if(food.yes==1)
+ 622   2          { 
+ 623   3            while(1)
+ 624   3            {
+ 625   4              unsigned char i,j=0;//可以改成bool型
+ 626   4              food.x=Random();
+ 627   4              for(i=0;i<=node;i++)
+ 628   4              {
+ 629   5                j=(snake.x[i]==food.x)+j;
+ 630   5              }
+ 631   4              if((((food.x%4)%14)==0)||(((food.x%4)%14)==13))
+ 632   4                j=j+1;
+ 633   4              if(food.x>=500)
+ 634   4                j++;
+ 635   4              if(j==0)
+ 636   4                break;
+ 637   4            }
+ 638   3            DrawGame2(food.x,0,1);
+ 639   3            food.yes=0;
+ 640   3          }
+ 641   2          switch(KeyBuffer)
+ 642   2          {
+ 643   3            case 4:
+ 644   3              snake.direction=JUP;
+ 645   3              break;
+ 646   3            case 3:
+ 647   3              snake.direction=JDOWN;
+ 648   3              break;
+ 649   3            case 2:
+ 650   3              if(snake.last==1)
+ 651   3              {
+ 652   4                snake.direction=UP;
+ 653   4                snake.last=UP;
+ 654   4              }
+ 655   3              else
+ 656   3              {
+ 657   4                snake.direction=snake.last-1;
+ 658   4                snake.last=snake.direction;
+ 659   4              }
+ 660   3              break;
+ 661   3            case 1:
+ 662   3              if(snake.last==4)
+ 663   3              {
+ 664   4                snake.direction=RIGHT;
+ 665   4                snake.last=RIGHT;
+ 666   4              }
+ 667   3              else
+ 668   3              {
+ 669   4                snake.direction=snake.last+1;
+ 670   4                snake.last=snake.direction;
+ 671   4              }
+ 672   3              break;
+ 673   3              default :
+ 674   3                snake.direction=snake.last;
+ 675   3          }
+C51 COMPILER V9.52.0.0   GAME                                                              02/26/2019 22:05:33 PAGE 12  
+
+ 676   2          
+ 677   2          KeyBuffer=0;
+ 678   2          
+ 679   2          switch(snake.direction)
+ 680   2          {
+ 681   3              case UP:
+ 682   3                snake.x[node+1]=snake.x[node]-56;
+ 683   3              break;
+ 684   3              case DOWN:
+ 685   3                snake.x[node+1]=snake.x[node]+56;
+ 686   3                break;
+ 687   3              case LEFT:
+ 688   3                snake.x[node+1]=snake.x[node]-4;
+ 689   3                break;
+ 690   3              case RIGHT:
+ 691   3                snake.x[node+1]=snake.x[node]+4;
+ 692   3              break;
+ 693   3              case JUP:
+ 694   3                if(snake.x[node]%4==3)
+ 695   3                  snake.x[node+1]=snake.x[node]-3;
+ 696   3                  else
+ 697   3                    snake.x[node+1]=snake.x[node]+1;
+ 698   3                break;
+ 699   3              case JDOWN:
+ 700   3              {
+ 701   4                if(snake.x[node]%4==0)
+ 702   4                  snake.x[node+1]=snake.x[node]+3;
+ 703   4                  else
+ 704   4                    snake.x[node+1]=snake.x[node]-1;
+ 705   4                }
+ 706   3                
+ 707   3                    
+ 708   3          }
+ 709   2          if((snake.x[node+1]<0)||(snake.x[node+1]>503))
+ 710   2            snake.life++;
+ 711   2          else if((snake.x[node+1]/4)%14==0)
+ 712   2            snake.life++;
+ 713   2          else if((snake.x[node+1]/4)%14==13)
+ 714   2            snake.life++;
+ 715   2          for(i=0;i<node;i++)
+ 716   2          {
+ 717   3            if(snake.x[i]==snake.x[node+1])
+ 718   3              snake.life++;
+ 719   3          }
+ 720   2          
+ 721   2          if((snake.life!=0)||(Last<=1))
+ 722   2            GameOver();
+ 723   2          
+ 724   2          if(snake.x[node+1]==food.x)
+ 725   2          {
+ 726   3            food.yes=1;
+ 727   3          }
+ 728   2          
+ 729   2          DrawGame2(snake.x[node+1],1,1);
+ 730   2          DrawGame2(snake.x[0],1,food.yes);
+ 731   2          
+ 732   2          if(food.yes==1)
+ 733   2          {
+ 734   3            Last=(29-node)*10+2;
+ 735   3            Score++;
+ 736   3            node++;
+ 737   3          }
+C51 COMPILER V9.52.0.0   GAME                                                              02/26/2019 22:05:33 PAGE 13  
+
+ 738   2          else
+ 739   2          {
+ 740   3            for(i=0;i<=node;i++)
+ 741   3            {
+ 742   4              snake.x[i]=snake.x[i+1];
+ 743   4            }
+ 744   3          }
+ 745   2          
+ 746   2          PrintScore();
+ 747   2          PrintLast();
+ 748   2          delay(Wait*1000);
+ 749   2        }
+ 750   1      }
+ 751              
+ 752          
+ 753          /**********************************
+ 754            主程序,运行时从这里开始
+ 755          **********************************/ 
+ 756          void Main()
+ 757          {  
+ 758   1        InitCpu();//初始化CPU
+ 759   1        Timer0_Init();
+ 760   1        Lcd_Reset(); //初始化LCD屏
+ 761   1        Lcd_WriteStr(2,1,"贪吃蛇");
+ 762   1        delay(5000);
+ 763   1        delay(5000);
+ 764   1        Lcd_WriteCmd(0x01);   //清除显示，并且设定地址指针为00H
+ 765   1        Lcd_Clear(0);//清屏
+ 766   1        menu();
+ 767   1        Lcd_WriteCmd(0x01);
+ 768   1        DrawBoard();//画界面
+ 769   1        switch(mode)
+ 770   1        {
+ 771   2          case 2:
+ 772   2            Game2();
+ 773   2            break;
+ 774   2          case 1:
+ 775   2            Game1();
+ 776   2            break;
+ 777   2          default:
+ 778   2            Game0();
+ 779   2        }
+ 780   1        GameOver();//游戏结束
+ 781   1        while(1);//要想重玩，只能重启，可继续完善该游戏
+ 782   1      }
+ 783          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   3310    ----
+   CONSTANT SIZE    =    100    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     75      35
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

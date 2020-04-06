@@ -1,0 +1,5 @@
+"Game.obj",
+"Lcd12864.obj",
+"Key.obj" 
+TO "SnakeGame" 
+RAMSIZE(256) 

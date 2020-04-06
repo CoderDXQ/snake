@@ -1,0 +1,318 @@
+C51 COMPILER V9.52.0.0   LCD12864                                                          02/26/2019 22:05:33 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE LCD12864
+OBJECT MODULE PLACED IN Lcd12864.OBJ
+COMPILER INVOKED BY: D:\C51\BIN\C51.EXE Lcd12864.c BROWSE DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          #include "stc.h"
+   2          #include "intrins.h"
+   3          #include "Lcd12864.h"
+   4          /*************
+   5          测试LCD是否处于忙状态
+   6          如果忙则返回0x80，否则返回0
+   7          **************/
+   8          //typedef enum {false = 0,true = 1}bool;
+   9          
+  10          bool l=0;
+  11          
+  12          unsigned char Lcd_CheckBusy(void)
+  13          {
+  14   1          unsigned char Busy;
+  15   1        LcdData=0xff;
+  16   1          RS=0;
+  17   1          RW=1;
+  18   1          E=1;
+  19   1          _nop_(); //延时一个机器周期
+  20   1          Busy=LcdData&0x80;
+  21   1          E=0;
+  22   1          return Busy;
+  23   1      }
+  24          
+  25          /*********************************
+  26          向LCD写入字节数据
+  27          **********************************/
+  28          void Lcd_WriteData(unsigned char Data)
+  29          {  
+  30   1        while(Lcd_CheckBusy());
+  31   1        RS=1;
+  32   1        RW=0;
+  33   1        E=0;
+  34   1        _nop_();  
+  35   1        _nop_(); 
+  36   1        LcdData=Data;
+  37   1        E=1;
+  38   1        _nop_();
+  39   1        _nop_();
+  40   1        E=0;
+  41   1      }
+  42          
+  43          /***********************************
+  44          从LCD中读出数据
+  45          ************************************/
+  46          
+  47          unsigned char Lcd_ReadData(void)
+  48          {
+  49   1        unsigned char Temp;
+  50   1        while(Lcd_CheckBusy());
+  51   1        LcdData=0xff;
+  52   1        RS=1;
+  53   1        RW=1;
+  54   1        E=1;
+  55   1        _nop_();
+C51 COMPILER V9.52.0.0   LCD12864                                                          02/26/2019 22:05:33 PAGE 2   
+
+  56   1          Temp=LcdData;
+  57   1          E=0;
+  58   1          return Temp;
+  59   1      }
+  60          
+  61          /************************************
+  62          想LCD中写入指令代码
+  63          **************************************/
+  64          void Lcd_WriteCmd(unsigned char CmdCode)
+  65          {  
+  66   1        while(Lcd_CheckBusy());
+  67   1          RS=0;
+  68   1          RW=0;
+  69   1          E=0;
+  70   1          _nop_();  
+  71   1        _nop_();
+  72   1          LcdData=CmdCode;
+  73   1          _nop_(); 
+  74   1        _nop_();
+  75   1          E=1;
+  76   1          _nop_();  
+  77   1        _nop_();
+  78   1          E=0;
+  79   1      }
+  80          
+  81          /*************************************
+  82          向LCD指定起始位置写入一个字符串
+  83          *************************************/
+  84          void Lcd_WriteStr(unsigned char x,unsigned char y,unsigned char *Str)
+  85          {
+  86   1        if((y>3)||(x>7))
+  87   1          return;//如果指定位置不在显示区域内，则不做任何写入直接返回
+  88   1        EA=0;
+  89   1        switch(y)
+  90   1        {
+  91   2          case 0:
+  92   2              Lcd_WriteCmd(0x80+x);
+  93   2              break;
+  94   2          case 1:
+  95   2              Lcd_WriteCmd(0x90+x);
+  96   2              break;        
+  97   2          case 2:
+  98   2              Lcd_WriteCmd(0x88+x);
+  99   2              break;
+ 100   2          case 3:
+ 101   2              Lcd_WriteCmd(0x98+x);
+ 102   2              break;
+ 103   2        }
+ 104   1        while(*Str>0)
+ 105   1        {  
+ 106   2          Lcd_WriteData(*Str);
+ 107   2            Str++;     
+ 108   2        }
+ 109   1        EA=1;
+ 110   1      }
+ 111          
+ 112          /**************************************
+ 113          为加速逻辑运算而设置的掩码表，这是以牺牲空间而换取时间的办法
+ 114          ***************************************/
+ 115          code unsigned int MaskTab[]={0x0001,0x0002,0x0004,0x0008,0x0010,0x0020,0x0040,0x0080,
+ 116                         0x0100,0x0200,0x0400,0x0800,0x1000,0x2000,0x4000,0x8000};
+ 117          /***************************************
+C51 COMPILER V9.52.0.0   LCD12864                                                          02/26/2019 22:05:33 PAGE 3   
+
+ 118          向LCD指定坐标写入一个象素,象素颜色有两种，0代表白（无显示），1代表黑（有显示）
+ 119          ****************************************/
+ 120          void Lcd_PutPixel(unsigned char x,unsigned char y,unsigned char Color)
+ 121          {
+ 122   1        unsigned char z,w;
+ 123   1        unsigned int Temp;
+ 124   1        if(x>=128||y>=64)
+ 125   1          return;
+ 126   1        w=15-x%16;//确定对这个字的第多少位进行操作
+ 127   1        x=x/16;//确定为一行上的第几字
+ 128   1      
+ 129   1        if(y<32) //如果为上页
+ 130   1          z=0x80;
+ 131   1        else     //否则如果为下页
+ 132   1          z=0x88;
+ 133   1      
+ 134   1        y=y%32;
+ 135   1        EA=0;
+ 136   1        Lcd_WriteCmd(0x36);
+ 137   1        Lcd_WriteCmd(y+0x80);        //行地址
+ 138   1        Lcd_WriteCmd(x+z);     //列地址 
+ 139   1        Temp=Lcd_ReadData();//先空读一次
+ 140   1        Temp=(unsigned int)Lcd_ReadData()<<8;//再读出高8位
+ 141   1        Temp|=(unsigned int)Lcd_ReadData();//再读出低8位
+ 142   1        EA=1;
+ 143   1        if(Color==1) //如果写入颜色为1
+ 144   1          Temp|=MaskTab[w];//在此处查表实现加速
+ 145   1        else         //如果写入颜色为0
+ 146   1          Temp&=~MaskTab[w];//在此处查表实现加速
+ 147   1        EA=0;
+ 148   1        Lcd_WriteCmd(y+0x80);        //行地址
+ 149   1        Lcd_WriteCmd(x+z);     //列地址
+ 150   1          Lcd_WriteData(Temp>>8);//先写入高8位，再写入低8位
+ 151   1          Lcd_WriteData(Temp&0x00ff);
+ 152   1        Lcd_WriteCmd(0x30);
+ 153   1        EA=1;
+ 154   1      }
+ 155          
+ 156          /******************************************
+ 157          从LCD指定坐标读取象素颜色值
+ 158          *******************************************/
+ 159          /*unsigned char Lcd_ReadPixel(unsigned char x,unsigned char y)
+ 160          {
+ 161            unsigned char z,w;
+ 162            unsigned int Temp;
+ 163            x=x%128;
+ 164            y=y%64;
+ 165            w=15-x%16;//确定对这个字的第多少位进行操作
+ 166            x=x/16;//确定为一行上的第几字
+ 167          
+ 168            if(y<32) //如果为上页
+ 169              z=0x80;
+ 170            else     //否则如果为下页
+ 171              z=0x88;
+ 172          
+ 173            y=y%32;
+ 174            Lcd_WriteCmd(0x36);
+ 175            Lcd_WriteCmd(y+0x80);        //行地址
+ 176            Lcd_WriteCmd(x+z);     //列地址 
+ 177            Temp=Lcd_ReadData();//先空读一次
+ 178            Temp=(unsigned int)Lcd_ReadData()<<8;//再读出高8位
+ 179            Temp|=(unsigned int)Lcd_ReadData();//再读出低8位
+C51 COMPILER V9.52.0.0   LCD12864                                                          02/26/2019 22:05:33 PAGE 4   
+
+ 180          
+ 181            if((Temp&&MaskTab[w])==0)
+ 182              return 0;
+ 183            else
+ 184              return 1;
+ 185          }*/
+ 186          
+ 187          /***************************************
+ 188          向LCD指定位置画一条长度为Length的指定颜色的水平线
+ 189          ****************************************/
+ 190          void Lcd_HoriLine(unsigned char x,unsigned char y,unsigned char Length,unsigned char Color)
+ 191          {
+ 192   1        unsigned char i;
+ 193   1        if(Length==0)
+ 194   1          return;
+ 195   1        for(i=0;i<Length;i++)
+ 196   1        {
+ 197   2          Lcd_PutPixel(x+i,y,Color);
+ 198   2        }
+ 199   1      }
+ 200          
+ 201          void DrawGame( int n,unsigned char Color)
+ 202          {
+ 203   1        unsigned char x,y;
+ 204   1        x=((n%27)*3)+3;
+ 205   1        y=((n/27)*3)+3;
+ 206   1        Lcd_Rectangle(x,y,Color);
+ 207   1      }
+ 208          
+ 209          void DrawGame2( int n,unsigned char m,unsigned char Color)
+ 210          {
+ 211   1        unsigned char x,y;
+ 212   1        x=(n/4)%14;
+ 213   1        if(((n%4)==1)||((n%4)==2))
+ 214   1          x=x+13;
+ 215   1          x=x*3+3;
+ 216   1        y=(n/56);
+ 217   1        if(((n%4)==2)||((n%4)==3))
+ 218   1          y=y+10;
+ 219   1          y=y*3+3;
+ 220   1        if(m==1)
+ 221   1          Lcd_Rectangle(x,y,Color);
+ 222   1        else
+ 223   1        {
+ 224   2            Lcd_PutPixel(x+1,y,1);
+ 225   2            Lcd_PutPixel(x+1,y+2,1);
+ 226   2            Lcd_HoriLine(x,y+1,3,1);
+ 227   2        }
+ 228   1      } 
+ 229          
+ 230          void DrawFood( int n)
+ 231          {
+ 232   1        int x,y;
+ 233   1        x=((n%27)*3)+3;
+ 234   1        y=((n/27)*3)+3;
+ 235   1        Lcd_PutPixel(x+1,y,1);
+ 236   1        Lcd_PutPixel(x+1,y+2,1);
+ 237   1        Lcd_HoriLine(x,y+1,3,1);
+ 238   1      }
+ 239          /*******************************************
+ 240          向LCD指定左上角坐标和右下角坐标画一个指定颜色的矩形
+ 241          ********************************************/
+C51 COMPILER V9.52.0.0   LCD12864                                                          02/26/2019 22:05:33 PAGE 5   
+
+ 242          void Lcd_Rectangle(unsigned char x,unsigned char y,unsigned char Color)
+ 243          {
+ 244   1        Lcd_HoriLine(x,y,3,Color);
+ 245   1        Lcd_HoriLine(x,y+1,3,Color);
+ 246   1        Lcd_HoriLine(x,y+2,3,Color);
+ 247   1      }
+ 248          
+ 249          /*****************************************
+ 250          清除Lcd全屏，如果清除模式Mode为0，则为全屏清除为颜色0（无任何显示）
+ 251          否则为全屏清除为颜色1(全屏填充显示)
+ 252          ******************************************/
+ 253          void Lcd_Clear(unsigned char Mode)
+ 254          {
+ 255   1        unsigned char x,y,ii;
+ 256   1        unsigned char Temp;
+ 257   1        if(Mode%2==0)
+ 258   1          Temp=0x00;
+ 259   1        else
+ 260   1          Temp=0xff;
+ 261   1        Lcd_WriteCmd(0x36);//扩充指令 绘图显示
+ 262   1        for(ii=0;ii<9;ii+=8)   
+ 263   1          for(y=0;y<0x20;y++)     
+ 264   1            for(x=0;x<8;x++)
+ 265   1            {   
+ 266   2              EA=0;
+ 267   2              Lcd_WriteCmd(y+0x80);        //行地址
+ 268   2              Lcd_WriteCmd(x+0x80+ii);     //列地址     
+ 269   2              Lcd_WriteData(Temp); //写数据 D15－D8 
+ 270   2              Lcd_WriteData(Temp); //写数据 D7－D0 
+ 271   2              EA=1;
+ 272   2            }
+ 273   1        Lcd_WriteCmd(0x30);
+ 274   1      }
+ 275          
+ 276          /****************************************
+ 277          LCD初始化
+ 278          *****************************************/
+ 279          void Lcd_Reset()
+ 280          {  
+ 281   1        PSB=1;
+ 282   1        Lcd_WriteCmd(0x30);       //选择基本指令集
+ 283   1        Lcd_WriteCmd(0x0c);       //开显示(无游标、不反白)
+ 284   1        Lcd_WriteCmd(0x01);       //清除显示，并且设定地址指针为00H
+ 285   1        Lcd_WriteCmd(0x06);       //指定在资料的读取及写入时，设定游标的移动方向及指定显示的移位
+ 286   1      }
+ 287          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    821    ----
+   CONSTANT SIZE    =     32    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      1      20
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
